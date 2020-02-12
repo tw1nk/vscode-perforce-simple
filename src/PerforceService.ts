@@ -81,7 +81,7 @@ export class PerforceService {
                             return agg;
                         }, new Map<string,string>());
 
-                        var client = settings.get('CLIENT');
+                        var client = settings.get('P4CLIENT');
                         if (client) {
                             return Promise.resolve(client);
                         }
