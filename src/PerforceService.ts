@@ -4,14 +4,15 @@
 import {
     Uri,
     workspace,
+    window,
     CodeAction,
-    WorkspaceFoldersChangeEvent
+    WorkspaceFoldersChangeEvent,
+    TextDocument
 } from 'vscode';
 
 import * as path from 'path';
 import * as fs from 'fs';
 import * as CP from 'child_process';
-import { lookupService } from 'dns';
 
 type P4Info = {
     UserName: string
@@ -31,36 +32,72 @@ type P4Info = {
     ServerLicense: string
     ServerLicenseIP: string
     CaseHandling: string
-}
+};
 
 type P4ClientsRow = {
     Client:string
     ClientRoot:string
     Host:string
-}
+};
 
 type cmdOutput = {
     err: boolean
     stderr: string
     stdout: string
+};
+
+
+function isSameOrRelativeTo(from:string, to:string):boolean {
+    return (to === from|| path.relative(from, to).startsWith('..'));
 }
+
 
 export class PerforceService {
 
+    private _channel = window.createOutputChannel('Perforce');
 
-    private static perforceWorkspaceMap = new Map<Uri,string>();
-
-    public static async onDidChangeWorkspaceFolders({ added, removed }: WorkspaceFoldersChangeEvent):Promise<void> {
-        for (let workspace of added) {
-            if (!PerforceService.perforceWorkspaceMap.get(workspace.uri)) {
-                var perforceWorkspace = await PerforceService.tryFindWorkspace(workspace.uri);
-                PerforceService.perforceWorkspaceMap.set(workspace.uri, perforceWorkspace);
-            }
-        }
+    public dispose() {
+        this._channel.dispose();
     }
 
-    public static async tryFindWorkspace(workspaceUri:Uri):Promise<string> {
+    private perforceWorkspaceMap = new Map<Uri,string>();
 
+    public async onDidOpenTextDocument(doc:TextDocument) {
+        /* currently NPE?
+        for (let workspaceUri of this.perforceWorkspaceMap.keys()) {
+            if (isSameOrRelativeTo(workspaceUri.fsPath, doc.uri.fsPath)) {
+                return;
+            }
+        }
+
+        let perforceWorkspace = await this.tryFindWorkspace(doc.uri);
+        this.perforceWorkspaceMap.set(doc.uri, perforceWorkspace);
+        */
+    }
+
+    public async onDidChangeWorkspaceFolders({ added, removed }: WorkspaceFoldersChangeEvent):Promise<void> {
+        if (added !== undefined) {
+        
+            for (let workspace of added) {
+                if (!this.perforceWorkspaceMap.get(workspace.uri)) {
+                    let perforceWorkspace = await this.tryFindWorkspace(workspace.uri);
+                    this.perforceWorkspaceMap.set(workspace.uri, perforceWorkspace);
+                }
+            }
+        } else {
+            // handle loose files
+            for (let doc of workspace.textDocuments) {
+                if (!this.perforceWorkspaceMap.get(doc.uri)) {
+                    let perforceWorkspace = await this.tryFindWorkspace(doc.uri);
+                    this.perforceWorkspaceMap.set(doc.uri, perforceWorkspace);
+                }
+            }
+        }
+        
+    }
+
+    public async tryFindWorkspace(workspaceUri:Uri):Promise<string> {
+        console.log('Check worksapce', workspaceUri)
         var p4configFile = process.env.P4CONFIG || "P4CONFIG";
         if (p4configFile) {
             var foundFile = false;
@@ -100,26 +137,28 @@ export class PerforceService {
 
         // try to resolve workspace through perforce
         // First p4 info to check if it's the current workspace, and to get user name for subsequent commands
-        const info = await PerforceService.info(workspaceUri).catch((err) => {console.error(err)});
+        const info = await this.info(workspaceUri).catch((err) => {console.error(err)});
         if (!info) {
             return Promise.reject("Failed to get info");
         }
-
+        console.log('got info?', info);
         let root:string = info.ClientRoot;
-        if (root === workspaceUri.fsPath || path.relative(workspaceUri.fsPath, root).startsWith('..')) {
-            console.log('Found a workspace root! from info' , root, info.ClientName);
-            return Promise.resolve(info.ClientName);
+        if (root) {
+            if (isSameOrRelativeTo(workspaceUri.fsPath, root)) {
+                console.log('Found a workspace root! from info' , root, info.ClientName);
+                return Promise.resolve(info.ClientName);
+            }
         }
 
         // failed to get the workspace from info, try getting workspace from p4 clients, this is really shady and will most likely fail.
-        const clients = await PerforceService.clients(workspaceUri, info.UserName).catch((err) => {console.error(err)});
+        const clients = await this.clients(workspaceUri, info.UserName).catch((err) => {console.error(err)});
         if (!clients) {
             return Promise.reject("Failed to get clients");
         }
-        var row:P4ClientsRow
+        var row:P4ClientsRow;
         for ( row of clients) {
             if (row.Host === info.ClientHost) {
-                if (row.ClientRoot === workspaceUri.fsPath || path.relative(workspaceUri.fsPath, row.ClientRoot).startsWith('..')) {
+                if (isSameOrRelativeTo(workspaceUri.fsPath, row.ClientRoot)) {
                     return Promise.resolve(row.Client);
                 }
         
@@ -130,8 +169,8 @@ export class PerforceService {
     }
 
 
-    public static async clients(wd:Uri, user:string):Promise<P4ClientsRow[]> {
-        const p4clients = await PerforceService.exec(wd, "clients", ['-u', user], ['-ztag', '-F', '"%client%;%Root%;%Host%"'])
+    public  async clients(wd:Uri, user:string):Promise<P4ClientsRow[]> {
+        const p4clients = await this.exec(wd, "clients", ['-u', user], ['-ztag', '-F', '"%client%;%Root%;%Host%"'])
         if (p4clients.err) {
             return Promise.reject(p4clients.stderr);
         }
@@ -146,17 +185,22 @@ export class PerforceService {
         for (var client of clients) {
             var line:P4ClientsRow = <P4ClientsRow>{};
             var parts = client.split(";");
-            line.Client = parts[0].trim();
-            line.ClientRoot =parts[1].trim();
-            line.Host = parts[2].trim();
-            out.push(line);
+            if (parts.length >= 3) {
+                line.Client = parts[0].trim();
+                line.ClientRoot =parts[1].trim();
+                line.Host = parts[2].trim();
+                out.push(line);
+            } else {
+                console.error('failed to parse p4 clients line', client);
+            }
+            
         }
 
         return Promise.resolve(out);
     }
 
-    public static async info(wd:Uri):Promise<P4Info> {
-        const p4info = await PerforceService.exec(wd, "info");
+    public  async info(wd:Uri):Promise<P4Info> {
+        const p4info = await this.exec(wd, "info");
         if (p4info.err) {
             return Promise.reject(p4info.stderr);
         }
@@ -229,7 +273,12 @@ export class PerforceService {
         return Promise.resolve(result);
     }
 
-    public static exec(wd: Uri, command: string, args:string[]=[], globalArgs:string[]=[], requireWorkspace:boolean=false):Promise<cmdOutput> {
+    public async edit(fileUri:Uri):Promise<boolean> {
+        let result = await this.exec(fileUri, 'edit', [fileUri.fsPath], [], true);
+        return !result.err;
+    }
+
+    public exec(wd: Uri, command: string, args:string[]=[], globalArgs:string[]=[], requireWorkspace:boolean=false):Promise<cmdOutput> {
 
         return new Promise((resolve) => {
 
@@ -242,15 +291,15 @@ export class PerforceService {
                 });
                 return;
             }
-
-            var commandLine = 'p4.exe';
+            var isWindows = /^win/.test(process.platform);
+            var commandLine = isWindows ? 'p4.exe' : 'p4';;
 
             if (globalArgs.length) {
                 commandLine += ' ' + globalArgs.join(' ');
             }
 
             if (requireWorkspace) {
-                var p4client = PerforceService.perforceWorkspaceMap.get(wksFolder.uri);
+                var p4client = this.perforceWorkspaceMap.get(wksFolder.uri);
                 if (!p4client) {
                     resolve({
                         err: true,
@@ -269,6 +318,7 @@ export class PerforceService {
             }
 
             console.log('Execute', commandLine);
+            this._channel.appendLine('> ' + commandLine);
 
             var proc = CP.exec(commandLine, {
                 cwd: wksFolder.uri.fsPath,
@@ -286,10 +336,18 @@ export class PerforceService {
             });
 
             proc.on('exit', (code) => {
+                let erroutput = stderr.join('');
+                let output = stdout.join('');
+                if (code) {
+                    this._channel.appendLine(  erroutput );
+                } else {
+                    this._channel.appendLine(output);
+                }
+                this._channel.appendLine('');
                 resolve({
                     err: !!code,
-                    stdout: stdout.join(''),
-                    stderr: stderr.join('')
+                    stdout: erroutput,
+                    stderr: output,
                 });
                 
             });

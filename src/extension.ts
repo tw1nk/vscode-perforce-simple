@@ -22,13 +22,21 @@ export function activate(context: vscode.ExtensionContext) {
 		// Display a message box to the user
 		vscode.window.showInformationMessage('Hello World!');
 	});
-
-    vscode.workspace.onDidChangeWorkspaceFolders(PerforceService.onDidChangeWorkspaceFolders, null, context.subscriptions);
-    PerforceService.onDidChangeWorkspaceFolders({ added: vscode.workspace.workspaceFolders || [], removed: [] });
+	const perforceService = new PerforceService();
 
 
-	context.subscriptions.push(new FileSystemListener());
+    vscode.workspace.onDidChangeWorkspaceFolders(perforceService.onDidChangeWorkspaceFolders, null, context.subscriptions);
+    perforceService.onDidChangeWorkspaceFolders({ added: vscode.workspace.workspaceFolders || [], removed: [] });
+
+	vscode.workspace.onDidOpenTextDocument(perforceService.onDidOpenTextDocument, null, context.subscriptions);
+
+	context.subscriptions.push(perforceService);
+	context.subscriptions.push(new FileSystemListener(perforceService));
 	context.subscriptions.push(disposable);
+}
+
+function testOpenFIle(doc:vscode.TextDocument) {
+	console.log('file open', doc);
 }
 
 // this method is called when your extension is deactivated
