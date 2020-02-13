@@ -2,9 +2,15 @@
 	"name": "vscode-perforce-simple",
 	"displayName": "vscode-perforce-simple",
 	"description": "No nonsense perforce extension",
-	"version": "0.0.1",
+	"author": {"name": "Calle Gustafsson"},
+	"publisher": "callegustafsson",
+	"repository": {
+		"url": "https://github.com/tw1nk/vscode-perforce-simple",
+		"type": "git"
+	},
+	"version": "0.0.2",
 	"engines": {
-		"vscode": "^1.42.0"
+		"vscode": "^1.41.0"
 	},
 	"categories": [
 		"Other"
@@ -33,7 +39,7 @@
 		"@types/glob": "^7.1.1",
 		"@types/mocha": "^5.2.7",
 		"@types/node": "^12.11.7",
-		"@types/vscode": "^1.42.0",
+		"@types/vscode": "^1.41.0",
 		"glob": "^7.1.5",
 		"mocha": "^6.2.2",
 		"typescript": "^3.6.4",

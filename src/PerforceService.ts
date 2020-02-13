@@ -336,8 +336,8 @@ export class PerforceService {
             });
 
             proc.on('exit', (code) => {
-                let erroutput = stderr.join('');
-                let output = stdout.join('');
+                const erroutput = stderr.join('');
+                const output = stdout.join('');
                 if (code) {
                     this._channel.appendLine(  erroutput );
                 } else {
@@ -346,8 +346,8 @@ export class PerforceService {
                 this._channel.appendLine('');
                 resolve({
                     err: !!code,
-                    stdout: erroutput,
-                    stderr: output,
+                    stdout: output,
+                    stderr: erroutput,
                 });
                 
             });
