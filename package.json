@@ -8,7 +8,7 @@
 		"url": "https://github.com/tw1nk/vscode-perforce-simple",
 		"type": "git"
 	},
-	"version": "0.0.2",
+	"version": "1.0.0",
 	"engines": {
 		"vscode": "^1.41.0"
 	},
@@ -19,6 +19,7 @@
 		"onCommand:extension.p4edit",
 		"*"
 	],
+	"icon": "images/icon.png",
 	"main": "./out/extension.js",
 	"contributes": {
 		"commands": [
