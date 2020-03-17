@@ -48,7 +48,8 @@ type cmdOutput = {
 
 
 function isSameOrRelativeTo(from:string, to:string):boolean {
-    return (to === from|| path.relative(from, to).startsWith('..'));
+    let rel:string = path.relative(to, from);
+    return rel === "" || (!rel.startsWith("..") && !path.isAbsolute(rel));
 }
 
 
@@ -97,43 +98,44 @@ export class PerforceService {
     }
 
     public async tryFindWorkspace(workspaceUri:Uri):Promise<string> {
-        console.log('Check worksapce', workspaceUri)
-        var p4configFile = process.env.P4CONFIG || "P4CONFIG";
-        if (p4configFile) {
-            var foundFile = false;
-            var dir = workspaceUri.fsPath;
-            while (!foundFile) {               
-                var filename = path.join(dir, p4configFile);
-                if (fs.existsSync(filename)) {
-
-                    var stats = fs.statSync(filename);
-                    if (stats.isFile()) {        
-                        var fileContents = fs.readFileSync(filename, {
-                            encoding:'utf8'
-                        });
-                       
-                        var settings = fileContents.split('\n').reduce((agg, val) => {
-                            var parts = val.split('=');
-                            agg.set(parts[0], parts[1]);
-                            return agg;
-                        }, new Map<string,string>());
-
-                        var client = settings.get('P4CLIENT');
-                        if (client) {
-                            return Promise.resolve(client);
+        console.log('Check workspace', workspaceUri)
+        var p4configNames = [ process.env.P4CONFIG, "P4CONFIG", ".p4config" ];
+        p4configNames.forEach(p4configFile => {
+            if (p4configFile) {
+                var foundFile = false;
+                var dir = workspaceUri.fsPath;
+                while (!foundFile) {               
+                    var filename = path.join(dir, p4configFile);
+                    if (fs.existsSync(filename)) {
+    
+                        var stats = fs.statSync(filename);
+                        if (stats.isFile()) {        
+                            var fileContents = fs.readFileSync(filename, {
+                                encoding:'utf8'
+                            });
+                           
+                            var settings = fileContents.split('\n').reduce((agg, val) => {
+                                var parts = val.split('=');
+                                agg.set(parts[0], parts[1]);
+                                return agg;
+                            }, new Map<string,string>());
+    
+                            var client = settings.get('P4CLIENT');
+                            if (client) {
+                                return Promise.resolve(client);
+                            }
                         }
                     }
+                    
+                    var newDir = path.dirname(dir);
+                    if (newDir === dir) {
+                        break;
+                    }
+    
+                    dir = newDir;
                 }
-                
-                var newDir = path.dirname(dir);
-                if (newDir === dir) {
-                    break;
-                }
-
-                dir = newDir;
-                
             }
-        }
+        });
 
         // try to resolve workspace through perforce
         // First p4 info to check if it's the current workspace, and to get user name for subsequent commands
@@ -212,7 +214,7 @@ export class PerforceService {
 
         let result:P4Info = <P4Info>{};
         for (var line of lines) {
-            var parts = line.trim().split(':', 2);
+            var parts = line.trim().split(': ', 2);
             if (parts.length === 2) {
                 switch(parts[0]) {
                     case "User name": 
