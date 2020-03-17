@@ -1,9 +1,14 @@
 # Change Log
 
-All notable changes to the "vscode-perforce-simple" extension will be documented in this file.
 
-Check [Keep a Changelog](http://keepachangelog.com/) for recommendations on how to structure this file.
+## [unreleased]
 
-## [Unreleased]
+
+## [1.0.1]
+- It correctly separates Windows paths from the p4 info output, by splitting by ": " instead of ":"
+- It finds a sub-path of another path more reliably using path.resolve()
+- It recognizes .p4config as a valid config file name
+
+## [1.0.0]
 
 - Initial release
